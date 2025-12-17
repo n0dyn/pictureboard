@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  backend:
+    build:
+      context: ./services/backend
+      dockerfile: Dockerfile
+    command: python manage.py run_socketio
+    volumes:
+      - ./services/backend:/usr/src/app
+    ports:
+      - 5001:5000
+    environment:
+      - FLASK_APP=src/__init__.py
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://postgres@db:5432/pictureboard_dev
+      - SECRET_KEY=dev_secret_key
+    depends_on:
+      - db
+
+  db:
+    image: postgres:15-alpine
+    volumes:
+      - postgres_data:/var/lib/postgresql/data/
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=""
+      - POSTGRES_DB=pictureboard_dev
+
+  redis:
+    image: redis:7-alpine
+
+  worker:
+    build:
+      context: ./services/backend
+      dockerfile: Dockerfile
+    command: celery -A src.celery_worker.celery worker --loglevel=info
+    volumes:
+      - ./services/backend:/usr/src/app
+    environment:
+      - FLASK_APP=src/__init__.py
+      - FLASK_ENV=development
+      - DATABASE_URL=postgresql://postgres@db:5432/pictureboard_dev
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - SECRET_KEY=dev_secret_key
+    depends_on:
+      - db
+      - redis
+
+  client:
+    build:
+      context: ./services/client
+      dockerfile: Dockerfile
+    volumes:
+      - ./services/client:/app
+      - /app/node_modules
+    ports:
+      - 5173:5173
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+
+volumes:
+  postgres_data:
